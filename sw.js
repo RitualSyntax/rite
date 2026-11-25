@@ -1,5 +1,5 @@
 // offline cache. bump V when shipping changes
-const V = 'rite-v1';
+const V = 'rite-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'fonts/redaction50.woff2', 'fonts/spectral.woff2', 'fonts/spectral-600.woff2', 'fonts/plexmono.woff2', 'fonts/plexmono-600.woff2'];
 

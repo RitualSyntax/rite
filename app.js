@@ -5,9 +5,9 @@ const DEFAULTS = {
   email: '', hour: 7, calendar: true,
   scriptUrl: '', scriptToken: '',
   lists: ['Home', 'Work', 'Life'],
-  lastSync: 0
+  lastSync: 0, showCal: true
 };
-const S = { settings: { ...DEFAULTS }, tasks: [] };
+const S = { settings: { ...DEFAULTS }, tasks: [], events: { at: 0, list: [] } };
 
 // ---------- helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
@@ -302,6 +302,33 @@ async function loadFeed() {
 }
 const MEAL_ORDER = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 
+// ---------- google calendar (read only) ----------
+function eventsOn(d) {
+  if (!S.settings.showCal) return [];
+  return (S.events.list || []).filter(e => {
+    const sd = e.s.slice(0, 10), ed = e.e.slice(0, 10);
+    if (e.all) return sd <= d && d < ed;
+    return sd === d || (sd < d && (ed > d || (ed === d && e.e.slice(11) > '00:00')));
+  });
+}
+function evRow(e, d) {
+  const sd = e.s.slice(0, 10), ed = e.e.slice(0, 10);
+  const when = e.all ? 'All day' : sd < d ? (ed === d ? 'Until ' + fmt12(e.e.slice(11)) : 'All day') : fmt12(e.s.slice(11)) + (ed === d ? '–' + fmt12(e.e.slice(11)) : '');
+  const [y, m, dd] = d.split('-').map(Number);
+  return `<a class="ev" href="https://calendar.google.com/calendar/r/day/${y}/${m}/${dd}" target="_blank" rel="noopener">
+    <span class="dot" style="background:${esc(e.col || '#8a8a8a')}"></span>
+    <div class="tb"><div class="tt">${esc(e.t)}</div><div class="tm">${[esc(when), e.loc ? esc(e.loc) : '', esc(e.cal)].filter(Boolean).join(' · ')}</div></div></a>`;
+}
+async function fetchEvents(loud) {
+  if (!S.settings.showCal) return;
+  const sc = await script(); if (!sc) return;
+  try {
+    const j = await (await fetch(sc.url, { method: 'POST', body: JSON.stringify({ token: sc.token, riteEvents: 14 }) })).json();
+    if (!j.ok || !j.events) throw new Error(j.error || 'needs update');
+    S.events = { at: Date.now(), list: j.events }; save('events'); render(); refreshList();
+  } catch (e) { if (loud) toast(/email|pdf|update/i.test(e.message) ? 'Your script needs the latest update to show your calendar' : 'Calendar failed: ' + e.message, 5000); }
+}
+
 // ---------- views ----------
 let tab = 'today', showDone = false;
 const TABS = [['today', 'Today'], ['upcoming', 'Upcoming'], ['lists', 'Lists']];
@@ -331,9 +358,10 @@ const VIEWS = {
     feedRows.push(`<a class="feed" href="intent://open#Intent;scheme=forge;package=com.ritualsyntax.forge;end"><span class="lab">Training</span><span class="val">Open Forge</span><span class="go">›</span></a>`);
     return `
       <div class="today-h"><div class="big">${d.toLocaleDateString('en-GB', { weekday: 'long' })}</div>
-        <div class="mono muted">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}${now.length ? ` · ${now.length} to do` : ''}</div></div>
+        <div class="mono muted">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}${now.length ? ` · ${now.length} to do` : ''}${eventsOn(td).length ? ` · ${eventsOn(td).length} in calendar` : ''}</div></div>
       ${quickAdd('Add a task… e.g. bins every tue 8pm')}
       ${over.length ? `<div class="card"><h3>Overdue</h3>${over.map(t => taskRow(t)).join('')}</div>` : ''}
+      ${eventsOn(td).length ? `<div class="card"><h3>Calendar</h3>${eventsOn(td).map(e => evRow(e, td)).join('')}</div>` : ''}
       <div class="card"><h3>Today</h3>
         ${now.length ? now.map(t => taskRow(t, { noDate: true })).join('') : `<div class="empty">${over.length ? 'Nothing else today.' : 'Clear. Add something above, or enjoy it.'}</div>`}
         ${doneToday.length ? `<button class="more" data-act="toggleDone">${showDone ? 'Hide' : 'Show'} ${doneToday.length} done</button>${showDone ? doneToday.map(t => taskRow({ ...t, done: true }, { noDate: true })).join('') : ''}` : ''}
@@ -358,8 +386,8 @@ const VIEWS = {
     return `
       ${quickAdd('Add a task…')}
       ${over.length ? `<div class="dayh">Overdue</div><div class="card" style="margin-top:4px">${sortTasks(over).map(t => taskRow(t)).join('')}</div>` : ''}
-      ${days.map(d => { const ts = on(d); return ts.length ? `<div class="dayh ${d === td ? 'today' : ''}">${niceDate(d)}${d === td || d === addDays(td, 1) ? ' · ' + new Date(d + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</div>
-        <div class="card" style="margin-top:4px">${ts.map(t => taskRow(t.due === d ? t : { ...t, _ghost: 1 }, { noDate: true })).join('')}</div>` : ''; }).join('') || '<div class="card"><div class="empty">Nothing in the next two weeks.</div></div>'}
+      ${days.map(d => { const ts = on(d), es = eventsOn(d); return ts.length || es.length ? `<div class="dayh ${d === td ? 'today' : ''}">${niceDate(d)}${d === td || d === addDays(td, 1) ? ' · ' + new Date(d + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</div>
+        <div class="card" style="margin-top:4px">${es.map(e => evRow(e, d)).join('')}${ts.map(t => taskRow(t.due === d ? t : { ...t, _ghost: 1 }, { noDate: true })).join('')}</div>` : ''; }).join('') || '<div class="card"><div class="empty">Nothing in the next two weeks.</div></div>'}
       ${later.length ? `<div class="dayh">Later</div><div class="card" style="margin-top:4px">${sortTasks(later).map(t => taskRow(t)).join('')}</div>` : ''}
       ${nodate.length ? `<div class="dayh">No date</div><div class="card" style="margin-top:4px">${sortTasks(nodate).map(t => taskRow(t)).join('')}</div>` : ''}`;
   },
@@ -498,6 +526,7 @@ function settingsSheet() {
       <div></div>
     </div>
     <label class="check"><input type="checkbox" id="sCal" ${st.calendar ? 'checked' : ''}>Put timed tasks in Google Calendar</label>
+    <label class="check"><input type="checkbox" id="sShowCal" ${st.showCal ? 'checked' : ''}>Show my Google Calendar events in Rite</label>
     <label>Script URL<input id="sUrl" type="url" value="${esc(st.scriptUrl)}" placeholder="Blank = use Tithe's"></label>
     <label>Script token<input id="sTok" value="${esc(st.scriptToken)}"></label>
     <p class="hint" id="syncState">${st.lastSync ? 'Last synced ' + new Date(st.lastSync).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'Not synced yet.'}</p>
@@ -530,6 +559,7 @@ async function sync(loud) {
     const j = await (await fetch(sc.url, { method: 'POST', body: JSON.stringify({ token: sc.token, rite: { email: st.email || sc.email || '', hour: +st.hour || 7, calendar: !!st.calendar, tasks } }) })).json();
     if (!j.ok) throw new Error(j.error || 'Script said no');
     st.lastSync = Date.now(); save('settings');
+    if (j.events) { S.events = { at: Date.now(), list: j.events }; save('events'); render(); }
     if (loud) toast(`Synced. ${j.synced || 0} in your calendar.`);
   } catch (e) {
     if (loud) toast(/Missing email|pdf/i.test(e.message) ? 'Your script needs the Rite update. See README.' : 'Sync failed: ' + e.message, 5000);
@@ -616,13 +646,13 @@ const ACTS = {
     S.tasks.forEach(t => { if (t.list === d.l) t.list = null; });
     save('settings'); saveTasks(); closeSheet(true); render();
   },
-  syncNow: () => { ACTS.saveSettings(true); sync(true); },
+  syncNow: () => { ACTS.saveSettings(true); sync(true); fetchEvents(true); },
   saveSettings: keepOpen => {
     const url = $('#sUrl').value.trim();
     if (url && !/^https:\/\/script\.google\.com\//.test(url)) { toast('Script URL should start https://script.google.com/'); return; }
-    Object.assign(S.settings, { email: $('#sEmail').value.trim(), hour: +$('#sHour').value, calendar: $('#sCal').checked, scriptUrl: url, scriptToken: $('#sTok').value.trim() });
+    Object.assign(S.settings, { email: $('#sEmail').value.trim(), hour: +$('#sHour').value, calendar: $('#sCal').checked, showCal: $('#sShowCal').checked, scriptUrl: url, scriptToken: $('#sTok').value.trim() });
     save('settings');
-    if (keepOpen !== true) { closeSheet(true); toast('Saved'); queueSync(); }
+    if (keepOpen !== true) { closeSheet(true); toast('Saved'); queueSync(); fetchEvents(false); render(); }
   },
   exportBackup: () => download(new Blob([JSON.stringify({ app: 'rite', v: 1, at: new Date().toISOString(), settings: S.settings, tasks: S.tasks })], { type: 'application/json' }), `rite-backup-${today()}.json`),
   importBackup: () => {
@@ -659,6 +689,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   render(); if (tab === 'today') loadFeed();
+  if (Date.now() - (S.events.at || 0) > 10 * 60e3) fetchEvents(false);
   if (Date.now() - (S.settings.lastSync || 0) > 6 * 3600e3) sync(false);
 });
 
@@ -668,8 +699,10 @@ document.addEventListener('visibilitychange', () => {
   try {
     S.tasks = (await db.get('tasks')) || [];
     S.settings = { ...DEFAULTS, ...((await db.get('settings')) || {}) };
+    S.events = (await db.get('events')) || { at: 0, list: [] };
   } catch (e) { toast('Storage broke: ' + e.message, 8000); }
   render(); loadFeed();
+  if (Date.now() - (S.events.at || 0) > 10 * 60e3) fetchEvents(false);
   setInterval(() => { nudge(); }, 30000);
   // midnight rollover
   let day = today();
