@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Rite</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <svg class="sigil" viewBox="0 0 32 32" aria-hidden="true">
+    <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <circle cx="16" cy="16" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="16" y1="2" x2="16" y2="10" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="16" y1="22" x2="16" y2="30" stroke="currentColor" stroke-width="1.5"/>
+    <circle cx="16" cy="16" r="1.6" fill="currentColor"/>
+  </svg>
+  <div class="brand">
+    <h1>Rite</h1>
+    <div class="mono muted">Today · Upcoming · Lists</div>
+  </div>
+  <button class="icon-btn" data-act="settings" aria-label="Settings" id="gearBtn"></button>
+</header>
+
+<main id="app"></main>
+
+<nav class="tabs" id="tabs"></nav>
+
+<div id="sheet" hidden></div>
+<div id="dialog" hidden></div>
+<div id="undo" hidden><span id="undoMsg"></span><button class="btn sm" data-act="undo">Undo</button></div>
+<div id="toast"></div>
+<input type="file" id="backupPick" accept="application/json,.json" hidden>
+
+<script src="app.js"></script>
+</body>
+</html>
